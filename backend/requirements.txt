@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+kubernetes
+pydantic
+python-dotenv
+google-adk
+google-cloud-aiplatform
+requests
