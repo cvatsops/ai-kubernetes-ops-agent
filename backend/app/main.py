@@ -11,6 +11,9 @@ from app.repositories.firestore_investigation_repository import (
     FirestoreInvestigationRepository,
 )
 from app.services.agent_service import AgentService
+from app.services.demo_scenarios import (
+    demo_scenario_service,
+)
 
 
 app = FastAPI(
@@ -74,8 +77,8 @@ async def list_investigations(
     """
     Return the most recent investigation history items.
 
-    This endpoint is intended for the investigation history
-    list/sidebar in the frontend.
+    This endpoint reads from Firestore only.
+    It does not execute Gemini or query Kubernetes.
     """
 
     if limit < 1 or limit > 100:
@@ -106,7 +109,7 @@ async def get_investigation(
     investigation_id: str,
 ):
     """
-    Return one complete historical investigation.
+    Return one historical investigation.
 
     Opening a historical investigation does not execute
     Gemini or query Kubernetes.
@@ -128,3 +131,53 @@ async def get_investigation(
     return InvestigationHistoryResponse.model_validate(
         investigation
     )
+
+
+@app.get("/scenarios")
+async def list_scenarios():
+    """
+    Return the available controlled Kubernetes demo
+    scenarios.
+
+    These scenarios are separate from the AI troubleshooting
+    agent and are used only for demonstrations and local
+    testing.
+    """
+
+    return demo_scenario_service.list_scenarios()
+
+
+@app.post("/scenarios/{scenario_id}")
+async def prepare_scenario(
+    scenario_id: str,
+):
+    """
+    Prepare a controlled Kubernetes failure scenario.
+
+    This endpoint is intentionally outside the AI agent's
+    read-only toolset.
+
+    The scenario harness may create Kubernetes resources,
+    while the troubleshooting agent itself remains
+    strictly read-only.
+    """
+
+    try:
+        return demo_scenario_service.prepare_scenario(
+            scenario_id
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to prepare the Kubernetes "
+                f"scenario: {exc}"
+            ),
+        ) from exc

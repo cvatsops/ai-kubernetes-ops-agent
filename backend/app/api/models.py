@@ -38,88 +38,44 @@ class Assessment(BaseModel):
 
 
 class InvestigationMetadata(BaseModel):
-    tools_used: list[str] = Field(
-        default_factory=list
-    )
-
-    evidence_summary: list[str] = Field(
-        default_factory=list
-    )
+    tools_used: list[str] = Field(default_factory=list)
+    evidence_summary: list[str] = Field(default_factory=list)
 
 
 class InvestigationResponse(BaseModel):
-    investigation_id: str | None = None
-
+    investigation_id: str | None = Field(
+        default=None,
+        description="Persisted investigation identifier",
+    )
     resource: ResourceReference | None = None
-
     assessment: Assessment
-
-    facts: list[str] = Field(
-        default_factory=list
-    )
-
+    facts: list[str] = Field(default_factory=list)
     root_cause: str
-
-    hypotheses: list[str] = Field(
-        default_factory=list
-    )
-
-    recommended_next_steps: list[str] = Field(
-        default_factory=list
-    )
-
+    hypotheses: list[str] = Field(default_factory=list)
+    recommended_next_steps: list[str] = Field(default_factory=list)
     investigation: InvestigationMetadata = Field(
         default_factory=InvestigationMetadata
     )
 
 
 class InvestigationHistoryItem(BaseModel):
-    """
-    Lightweight representation used by the investigation
-    history list.
-    """
-
     id: str
-
     created_at: datetime
-
     question: str
-
     resource: ResourceReference | None = None
-
     assessment: Assessment
 
 
 class InvestigationHistoryResponse(BaseModel):
-    """
-    Response returned when retrieving a complete historical
-    investigation.
-    """
-
     id: str
-
     created_at: datetime
-
     question: str
-
     resource: ResourceReference | None = None
-
     assessment: Assessment
-
-    facts: list[str] = Field(
-        default_factory=list
-    )
-
+    facts: list[str] = Field(default_factory=list)
     root_cause: str
-
-    hypotheses: list[str] = Field(
-        default_factory=list
-    )
-
-    recommended_next_steps: list[str] = Field(
-        default_factory=list
-    )
-
+    hypotheses: list[str] = Field(default_factory=list)
+    recommended_next_steps: list[str] = Field(default_factory=list)
     investigation: InvestigationMetadata = Field(
         default_factory=InvestigationMetadata
     )

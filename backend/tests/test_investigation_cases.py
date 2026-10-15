@@ -63,7 +63,7 @@ INVESTIGATION_CASES = [
         "name": "readiness_failure",
         "description": "Pod is running but fails its readiness probe.",
         "resource_type": "Pod",
-        "expected_status": "Failed",
+        "expected_status": "Degraded",
         "expected_severity": None,
         "required_evidence": [
             "readiness",
@@ -209,6 +209,28 @@ class TestInvestigationCaseDefinitions(unittest.TestCase):
                     case["expected_status"],
                     valid_statuses,
                 )
+
+    def test_expected_status_distribution_is_explicit(self):
+        expected_statuses = {
+            case["name"]: case["expected_status"]
+            for case in INVESTIGATION_CASES
+        }
+
+        self.assertEqual(
+            expected_statuses,
+            {
+                "healthy_deployment": "Healthy",
+                "image_pull_failure": "Failed",
+                "crash_loop_backoff": "Failed",
+                "oom_killed": "Failed",
+                "readiness_failure": "Degraded",
+                "liveness_failure": "Failed",
+                "pending_pod": "Failed",
+                "service_selector_mismatch": "Failed",
+                "cpu_pressure": "Degraded",
+                "deployment_rollout_failure": "Failed",
+            },
+        )
 
     def test_high_severity_cases_are_explicit(self):
         high_severity_cases = {

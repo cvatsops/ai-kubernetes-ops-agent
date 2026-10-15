@@ -1,8 +1,26 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from app.api.models import InvestigationRequest
 from app.services.agent_service import AgentService
+
+
+class FakeRepository:
+    def __init__(self):
+        self.saved_request = None
+        self.saved_response = None
+
+    def save(self, request, response):
+        self.saved_request = request
+        self.saved_response = response
+        return "test-investigation-id"
+
+    def get(self, investigation_id):
+        return None
+
+    def list_recent(self, limit=20):
+        return []
 
 
 class TestAgentService(unittest.TestCase):
@@ -321,6 +339,82 @@ class TestAgentService(unittest.TestCase):
                 [invalid_event]
             )
 
+    def test_investigate_attaches_persisted_investigation_id(
+        self,
+    ):
+        repository = FakeRepository()
+
+        service = AgentService(
+            repository=repository
+        )
+
+        response_json = """
+        {
+            "resource": {
+                "type": "Pod",
+                "name": "imagepull-demo",
+                "namespace": "aiops-demo"
+            },
+            "assessment": {
+                "status": "Failed",
+                "severity": "High"
+            },
+            "facts": [
+                "ImagePullBackOff was observed."
+            ],
+            "root_cause": "The configured image could not be pulled.",
+            "hypotheses": [],
+            "recommended_next_steps": [
+                "Verify the configured image."
+            ],
+            "investigation": {
+                "tools_used": [
+                    "get_resource_summary",
+                    "get_resource_events"
+                ],
+                "evidence_summary": [
+                    "ImagePullBackOff was observed."
+                ]
+            }
+        }
+        """
+
+        service.runner.run_debug = AsyncMock(
+            return_value=[
+                self._build_event(response_json)
+            ]
+        )
+
+        request = InvestigationRequest(
+            question="Why is this Pod failing?",
+            resource_type="Pod",
+            resource_name="imagepull-demo",
+            namespace="aiops-demo",
+        )
+
+        result = self._run_async(
+            service.investigate(request)
+        )
+
+        self.assertEqual(
+            result.investigation_id,
+            "test-investigation-id",
+        )
+
+        self.assertIs(
+            repository.saved_request,
+            request,
+        )
+
+        self.assertIsNotNone(
+            repository.saved_response,
+        )
+
+        self.assertEqual(
+            repository.saved_response.root_cause,
+            "The configured image could not be pulled.",
+        )
+
     @staticmethod
     def _build_event(text: str):
         """
@@ -339,6 +433,12 @@ class TestAgentService(unittest.TestCase):
         return SimpleNamespace(
             content=content
         )
+
+    @staticmethod
+    def _run_async(coroutine):
+        import asyncio
+
+        return asyncio.run(coroutine)
 
 
 if __name__ == "__main__":

@@ -4,21 +4,11 @@ from typing import Any
 from google.adk.runners import InMemoryRunner
 
 from app.agents.kubernetes_agent import root_agent
-from app.api.models import (
-    InvestigationRequest,
-    InvestigationResponse,
-)
-from app.repositories.investigation_repository import (
-    InvestigationRepository,
-)
+from app.api.models import InvestigationRequest, InvestigationResponse
+from app.repositories.investigation_repository import InvestigationRepository
 
 
 class AgentService:
-    """
-    Service responsible for executing the Kubernetes ADK agent
-    and optionally persisting completed investigations.
-    """
-
     def __init__(
         self,
         repository: InvestigationRepository | None = None,
@@ -27,26 +17,12 @@ class AgentService:
             agent=root_agent,
             app_name="ai-kubernetes-ops-agent",
         )
-
         self.repository = repository
 
     async def investigate(
         self,
         request: InvestigationRequest,
     ) -> InvestigationResponse:
-        """
-        Execute the Kubernetes troubleshooting agent with
-        explicit investigation context.
-
-        The resource information supplied by the UI is included
-        in the agent prompt so the agent does not have to infer
-        the target resource from the natural-language question.
-
-        When a repository is configured, the completed
-        investigation is persisted after a valid response
-        has been produced.
-        """
-
         investigation_context = self._build_investigation_context(
             request
         )
@@ -75,10 +51,6 @@ class AgentService:
     def _build_investigation_context(
         request: InvestigationRequest,
     ) -> str:
-        """
-        Build a structured investigation context for the agent.
-        """
-
         return (
             "INVESTIGATION CONTEXT\n"
             "\n"
@@ -92,16 +64,6 @@ class AgentService:
     def _extract_response(
         response: list[Any],
     ) -> InvestigationResponse:
-        """
-        Extract the structured InvestigationResponse from the
-        final ADK event.
-
-        ADK run_debug() returns a list of Event objects. With
-        output_schema configured on the agent, the model's final
-        response is expected to contain JSON matching the
-        InvestigationResponse schema.
-        """
-
         for event in reversed(response):
             content = getattr(event, "content", None)
 
@@ -140,18 +102,6 @@ class AgentService:
     def _parse_json(
         text: str,
     ) -> dict | None:
-        """
-        Parse JSON returned by the structured-output agent.
-
-        This accepts either:
-        - plain JSON
-        - JSON surrounded by whitespace
-        - JSON inside a markdown code fence
-
-        The normal expected format is plain JSON because the
-        agent uses output_schema.
-        """
-
         cleaned = text.strip()
 
         if cleaned.startswith("```"):
