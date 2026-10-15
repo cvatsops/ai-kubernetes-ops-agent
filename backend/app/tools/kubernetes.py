@@ -370,20 +370,33 @@ class KubernetesInvestigator:
                 replicaset.metadata.owner_references or []
             )
 
-            is_owned_by_deployment = any(
-                owner.kind == "Deployment"
-                and owner.name == deployment_name
-                for owner in owner_references
+            deployment_owner = next(
+                (
+                    owner
+                    for owner in owner_references
+                    if owner.kind == "Deployment"
+                    and owner.name == deployment_name
+                ),
+                None,
             )
 
-            if not is_owned_by_deployment:
+            if deployment_owner is None:
                 continue
 
             related.append(
                 {
                     "name": replicaset.metadata.name,
+                    "uid": replicaset.metadata.uid,
+                    "owner": {
+                        "kind": deployment_owner.kind,
+                        "name": deployment_owner.name,
+                        "uid": deployment_owner.uid,
+                    },
                     "desired_replicas": (
                         replicaset.spec.replicas or 0
+                    ),
+                    "current_replicas": (
+                        replicaset.status.replicas or 0
                     ),
                     "ready_replicas": (
                         replicaset.status.ready_replicas or 0
@@ -423,9 +436,78 @@ class KubernetesInvestigator:
                 "restarts": self._restart_count(pod),
                 "labels": pod.metadata.labels or {},
                 "node": pod.spec.node_name,
+                "owner_references": [
+                    {
+                        "kind": owner.kind,
+                        "name": owner.name,
+                        "uid": owner.uid,
+                    }
+                    for owner in (pod.metadata.owner_references or [])
+                ],
             }
             for pod in pods.items
         ]
+
+    def _get_pods_for_replicasets(
+        self,
+        namespace: str,
+        replicasets: list[dict],
+    ) -> dict[str, list[dict]]:
+        """
+        Build an explicit ReplicaSet -> Pod ownership map.
+
+        Pods are associated with a ReplicaSet using Kubernetes
+        ownerReferences rather than relying only on labels.
+        """
+
+        if not replicasets:
+            return {}
+
+        replicaset_uids = {
+            replicaset["uid"]: replicaset["name"]
+            for replicaset in replicasets
+            if replicaset.get("uid")
+        }
+
+        pods = self.core_api.list_namespaced_pod(namespace)
+
+        result = {
+            replicaset["name"]: []
+            for replicaset in replicasets
+        }
+
+        for pod in pods.items:
+            owner = next(
+                (
+                    owner
+                    for owner in (pod.metadata.owner_references or [])
+                    if owner.kind == "ReplicaSet"
+                    and owner.uid in replicaset_uids
+                ),
+                None,
+            )
+
+            if owner is None:
+                continue
+
+            result[replicaset_uids[owner.uid]].append(
+                {
+                    "name": pod.metadata.name,
+                    "uid": pod.metadata.uid,
+                    "owner": {
+                        "kind": owner.kind,
+                        "name": owner.name,
+                        "uid": owner.uid,
+                    },
+                    "phase": pod.status.phase,
+                    "ready": self._pod_ready(pod),
+                    "restarts": self._restart_count(pod),
+                    "labels": pod.metadata.labels or {},
+                    "node": pod.spec.node_name,
+                }
+            )
+
+        return result
 
     def get_resource_relationships(
         self,
@@ -459,18 +541,34 @@ class KubernetesInvestigator:
                 name,
             )
 
-            pods = self.get_pods_for_selector(
+            pods_by_replicaset = self._get_pods_for_replicasets(
                 namespace,
-                selector,
+                replicasets,
             )
+
+            for replicaset in replicasets:
+                replicaset["pods"] = pods_by_replicaset.get(
+                    replicaset["name"],
+                    [],
+                )
 
             return {
                 "resource_type": "deployment",
                 "name": name,
                 "namespace": namespace,
                 "relationships": {
+                    "deployment": {
+                        "kind": "Deployment",
+                        "name": name,
+                        "uid": deployment.metadata.uid,
+                        "selector": selector,
+                    },
                     "replicasets": replicasets,
-                    "pods": pods,
+                    "pods": [
+                        pod
+                        for replicaset in replicasets
+                        for pod in replicaset.get("pods", [])
+                    ],
                 },
             }
 
@@ -753,15 +851,35 @@ class KubernetesInvestigator:
                 else {}
             )
 
+            replicasets = self.get_related_replicasets(
+                namespace,
+                name,
+            )
+
+            pods_by_replicaset = self._get_pods_for_replicasets(
+                namespace,
+                replicasets,
+            )
+
+            for replicaset in replicasets:
+                replicaset["pods"] = pods_by_replicaset.get(
+                    replicaset["name"],
+                    [],
+                )
+
             result["relationships"] = {
-                "replicasets": self.get_related_replicasets(
-                    namespace,
-                    name,
-                ),
-                "pods": self.get_pods_for_selector(
-                    namespace,
-                    selector,
-                ),
+                "deployment": {
+                    "kind": "Deployment",
+                    "name": name,
+                    "uid": deployment.metadata.uid,
+                    "selector": selector,
+                },
+                "replicasets": replicasets,
+                "pods": [
+                    pod
+                    for replicaset in replicasets
+                    for pod in replicaset.get("pods", [])
+                ],
             }
 
             result["pod_logs"] = {}

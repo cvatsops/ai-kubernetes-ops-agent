@@ -129,9 +129,11 @@ class PodConfigurationTool:
                 "host": probe.tcp_socket.host,
             }
 
-        if probe.exec:
+        # Kubernetes Python client exposes the Exec probe
+        # field internally as "_exec".
+        if probe._exec:
             result["exec"] = {
-                "command": probe.exec.command or [],
+                "command": probe._exec.command or [],
             }
 
         if probe.grpc:

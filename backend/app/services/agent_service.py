@@ -4,86 +4,89 @@ from typing import Any
 from google.adk.runners import InMemoryRunner
 
 from app.agents.kubernetes_agent import root_agent
-from app.api.models import InvestigationResponse
+from app.api.models import (
+    InvestigationRequest,
+    InvestigationResponse,
+)
+from app.repositories.investigation_repository import (
+    InvestigationRepository,
+)
 
 
 class AgentService:
-    """Service responsible for executing the Kubernetes ADK agent."""
+    """
+    Service responsible for executing the Kubernetes ADK agent
+    and optionally persisting completed investigations.
+    """
 
-    def __init__(self):
+    def __init__(
+        self,
+        repository: InvestigationRepository | None = None,
+    ):
         self.runner = InMemoryRunner(
             agent=root_agent,
             app_name="ai-kubernetes-ops-agent",
         )
 
+        self.repository = repository
+
     async def investigate(
         self,
-        question: str,
-        resource_type: str | None = None,
-        resource_name: str | None = None,
-        namespace: str | None = None,
+        request: InvestigationRequest,
     ) -> InvestigationResponse:
         """
-        Execute a Kubernetes investigation using the user's
-        question and optional resource context.
+        Execute the Kubernetes troubleshooting agent with
+        explicit investigation context.
+
+        The resource information supplied by the UI is included
+        in the agent prompt so the agent does not have to infer
+        the target resource from the natural-language question.
+
+        When a repository is configured, the completed
+        investigation is persisted after a valid response
+        has been produced.
         """
 
         investigation_context = self._build_investigation_context(
-            question=question,
-            resource_type=resource_type,
-            resource_name=resource_name,
-            namespace=namespace,
+            request
         )
 
         response = await self.runner.run_debug(
             investigation_context
         )
 
-        return self._extract_response(response)
+        investigation_response = self._extract_response(
+            response
+        )
+
+        if self.repository is not None:
+            investigation_id = self.repository.save(
+                request=request,
+                response=investigation_response,
+            )
+
+            investigation_response.investigation_id = (
+                investigation_id
+            )
+
+        return investigation_response
 
     @staticmethod
     def _build_investigation_context(
-        question: str,
-        resource_type: str | None,
-        resource_name: str | None,
-        namespace: str | None,
+        request: InvestigationRequest,
     ) -> str:
         """
-        Build explicit investigation context for the agent.
-
-        Resource information supplied by the UI is treated as
-        authoritative context rather than something the model
-        needs to infer from the user's question.
+        Build a structured investigation context for the agent.
         """
 
-        context_lines = [
-            "KUBERNETES INVESTIGATION CONTEXT:",
-        ]
-
-        if resource_type:
-            context_lines.append(
-                f"Resource type: {resource_type}"
-            )
-
-        if resource_name:
-            context_lines.append(
-                f"Resource name: {resource_name}"
-            )
-
-        if namespace:
-            context_lines.append(
-                f"Namespace: {namespace}"
-            )
-
-        context_lines.extend(
-            [
-                "",
-                "USER QUESTION:",
-                question,
-            ]
+        return (
+            "INVESTIGATION CONTEXT\n"
+            "\n"
+            f"User question: {request.question}\n"
+            f"Resource type: {request.resource_type}\n"
+            f"Resource name: {request.resource_name}\n"
+            f"Namespace: {request.namespace}\n"
         )
-
-        return "\n".join(context_lines)
 
     @staticmethod
     def _extract_response(
@@ -134,7 +137,9 @@ class AgentService:
         )
 
     @staticmethod
-    def _parse_json(text: str) -> dict | None:
+    def _parse_json(
+        text: str,
+    ) -> dict | None:
         """
         Parse JSON returned by the structured-output agent.
 

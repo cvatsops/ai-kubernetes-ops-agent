@@ -1,11 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.models import (
+    InvestigationHistoryItem,
+    InvestigationHistoryResponse,
     InvestigationRequest,
     InvestigationResponse,
 )
-
+from app.repositories.firestore_investigation_repository import (
+    FirestoreInvestigationRepository,
+)
 from app.services.agent_service import AgentService
 
 
@@ -31,7 +35,13 @@ app.add_middleware(
 )
 
 
-agent_service = AgentService()
+investigation_repository = (
+    FirestoreInvestigationRepository()
+)
+
+agent_service = AgentService(
+    repository=investigation_repository
+)
 
 
 @app.get("/health")
@@ -50,8 +60,71 @@ async def investigate(
     request: InvestigationRequest,
 ):
     return await agent_service.investigate(
-        question=request.question,
-        resource_type=request.resource_type,
-        resource_name=request.resource_name,
-        namespace=request.namespace,
+        request
+    )
+
+
+@app.get(
+    "/investigations",
+    response_model=list[InvestigationHistoryItem],
+)
+async def list_investigations(
+    limit: int = 20,
+):
+    """
+    Return the most recent investigation history items.
+
+    This endpoint is intended for the investigation history
+    list/sidebar in the frontend.
+    """
+
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="limit must be between 1 and 100",
+        )
+
+    investigations = (
+        investigation_repository.list_recent(
+            limit=limit
+        )
+    )
+
+    return [
+        InvestigationHistoryItem.model_validate(
+            investigation
+        )
+        for investigation in investigations
+    ]
+
+
+@app.get(
+    "/investigations/{investigation_id}",
+    response_model=InvestigationHistoryResponse,
+)
+async def get_investigation(
+    investigation_id: str,
+):
+    """
+    Return one complete historical investigation.
+
+    Opening a historical investigation does not execute
+    Gemini or query Kubernetes.
+    """
+
+    investigation = investigation_repository.get(
+        investigation_id
+    )
+
+    if investigation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Investigation '{investigation_id}' "
+                "was not found."
+            ),
+        )
+
+    return InvestigationHistoryResponse.model_validate(
+        investigation
     )
