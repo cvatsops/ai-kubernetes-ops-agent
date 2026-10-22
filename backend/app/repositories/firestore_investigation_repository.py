@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -6,6 +7,11 @@ from google.cloud import firestore
 from app.api.models import (
     InvestigationRequest,
     InvestigationResponse,
+)
+from app.config import (
+    FIRESTORE_PROJECT_ID,
+    FIRESTORE_DATABASE_ID,
+    FIRESTORE_COLLECTION_NAME,
 )
 from app.repositories.investigation_repository import (
     InvestigationRepository,
@@ -20,24 +26,20 @@ class FirestoreInvestigationRepository(
 
     Collection structure:
 
-        investigations/{investigation_id}
+        {collection_name}/{investigation_id}
     """
-
-    PROJECT_ID = "de1000-dev-oltmate-agent"
-    DATABASE_ID = "ai-kubernetes-ops-agent"
-    COLLECTION_NAME = "investigations"
 
     def __init__(
         self,
         client: firestore.Client | None = None,
     ):
         self.client = client or firestore.Client(
-            project=self.PROJECT_ID,
-            database=self.DATABASE_ID,
+            project=FIRESTORE_PROJECT_ID,
+            database=FIRESTORE_DATABASE_ID,
         )
 
         self.collection = self.client.collection(
-            self.COLLECTION_NAME
+            FIRESTORE_COLLECTION_NAME
         )
 
     def save(

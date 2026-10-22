@@ -1,6 +1,4 @@
-from dotenv import load_dotenv
-
-load_dotenv()
+import app.config 
 
 from google.adk.agents import Agent
 

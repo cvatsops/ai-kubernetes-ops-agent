@@ -545,7 +545,7 @@ export default function Home() {
                   : "text-slate-400 hover:text-slate-100"
               }`}
             >
-              History
+              Investigation History
 
               {activeTab === "history" && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-blue-500" />
